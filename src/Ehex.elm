@@ -6,9 +6,11 @@ import Dict
 ehex : Dict.Dict Int String
 ehex =
     let
+        letters : List Char
         letters =
             List.filter (\letter -> not (List.member letter [ 'I', 'O' ])) <| List.map Char.fromCode (List.range 65 90)
 
+        values : List String
         values =
             List.append (List.map String.fromInt (List.range 0 9)) (List.map String.fromChar letters)
     in

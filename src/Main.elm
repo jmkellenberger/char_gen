@@ -1,6 +1,7 @@
-module Main exposing (main)
+module Main exposing (Model, Msg, Stats, Step, main)
 
 import Browser
+import Career exposing (Career)
 import Ehex
 import Html exposing (Html)
 import Html.Attributes
@@ -23,9 +24,14 @@ type alias Stats =
     }
 
 
+die : Generator Int
+die =
+    Random.int 1 6
+
+
 twoDice : Generator Int
 twoDice =
-    Random.map2 (+) (Random.int 1 6) (Random.int 1 6)
+    Random.map2 (+) die die
 
 
 randomStats : Generator Stats
@@ -38,18 +44,40 @@ randomStats =
         |> Random.andMap twoDice
 
 
+randomAge : Generator Int
+randomAge =
+    Random.weighted
+        ( 5, 13 )
+        [ ( 10, 14 )
+        , ( 15, 15 )
+        , ( 20, 16 )
+        , ( 50, 17 )
+        , ( 100, 18 )
+        ]
+
+
+randomStatsAge : Generator ( Stats, Int )
+randomStatsAge =
+    Random.pair randomStats randomAge
+
+
 rollStats : Cmd Msg
 rollStats =
-    Random.generate StatsRolled randomStats
+    Random.generate StatsRolled randomStatsAge
+
+
+type Step
+    = PickStats
+    | PickCareer
 
 
 type alias Model =
-    { stats : Stats }
+    { step : Step, stats : Stats, age : Int, selectedCareer : Career, career : Maybe Career }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { stats = Stats 6 6 6 6 6 6 }, Cmd.none )
+    ( { step = PickStats, stats = Stats 6 6 6 6 6 6, age = 18, selectedCareer = Career.Scouts, career = Nothing }, rollStats )
 
 
 
@@ -58,7 +86,10 @@ init _ =
 
 type Msg
     = RerollClicked
-    | StatsRolled Stats
+    | StatsRolled ( Stats, Int )
+    | StatsPicked
+    | CareerSelected Career
+    | CareerPicked
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -67,8 +98,17 @@ update msg model =
         RerollClicked ->
             ( model, rollStats )
 
-        StatsRolled stats ->
-            ( { model | stats = stats }, Cmd.none )
+        StatsRolled ( stats, age ) ->
+            ( { model | stats = stats, age = age }, Cmd.none )
+
+        StatsPicked ->
+            ( { model | step = PickCareer }, Cmd.none )
+
+        CareerSelected c ->
+            ( { model | selectedCareer = c }, Cmd.none )
+
+        CareerPicked ->
+            ( { model | career = Just model.selectedCareer }, Cmd.none )
 
 
 
@@ -78,13 +118,23 @@ update msg model =
 view : Model -> Html Msg
 view model =
     Html.div []
-        [ viewPlayerCard model
-        , viewStats model.stats
+        [ playerCard model
+        , case model.step of
+            PickStats ->
+                statPicker model.stats
+
+            PickCareer ->
+                careerPicker model.selectedCareer
         ]
 
 
-viewStats : Stats -> Html Msg
-viewStats stats =
+continueButton : Msg -> Html Msg
+continueButton msg =
+    Html.button [ Html.Events.onClick msg ] [ Html.text "Continue" ]
+
+
+statPicker : Stats -> Html Msg
+statPicker stats =
     Html.div []
         [ Html.ul []
             [ Html.li [] [ Html.text ("Strength: " ++ String.fromInt stats.str) ]
@@ -95,11 +145,30 @@ viewStats stats =
             , Html.li [] [ Html.text ("Social Standing: " ++ String.fromInt stats.soc) ]
             ]
         , Html.button [ Html.Events.onClick RerollClicked ] [ Html.text "Reroll Stats" ]
+        , continueButton StatsPicked
         ]
 
 
-viewUPP : Stats -> String
-viewUPP stats =
+careerPicker : Career -> Html Msg
+careerPicker career =
+    Html.div []
+        [ Html.select [ Html.Events.onInput (\c -> CareerSelected <| Career.fromString c) ] <| List.map (renderCareerOpt career) Career.listCareers
+        , continueButton CareerPicked
+        ]
+
+
+renderCareerOpt : Career -> Career -> Html msg
+renderCareerOpt selected career =
+    let
+        careerString : String
+        careerString =
+            Career.toString career
+    in
+    Html.option [ Html.Attributes.selected (selected == career) ] [ Html.text careerString ]
+
+
+toUpp : Stats -> String
+toUpp stats =
     Ehex.fromInt stats.str
         ++ Ehex.fromInt stats.dex
         ++ Ehex.fromInt stats.end
@@ -108,9 +177,27 @@ viewUPP stats =
         ++ Ehex.fromInt stats.soc
 
 
-viewPlayerCard : Model -> Html Msg
-viewPlayerCard model =
-    Html.div [ Html.Attributes.id "player-card" ] [ Html.text ("UPP: " ++ viewUPP model.stats) ]
+playerCard : Model -> Html msg
+playerCard model =
+    let
+        career : String
+        career =
+            case model.career of
+                Just c ->
+                    Career.toString c
+
+                Nothing ->
+                    "None"
+    in
+    Html.div [ Html.Attributes.id "player-card" ]
+        [ Html.div [] [ Html.text ("UPP: " ++ toUpp model.stats ++ " Age: " ++ String.fromInt model.age) ]
+        , Html.div []
+            [ Html.text
+                ("Service: "
+                    ++ career
+                )
+            ]
+        ]
 
 
 
